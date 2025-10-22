@@ -116,10 +116,12 @@ $(function() {
         // Set information varibales
         self.title = ko.observable()
         self.isRestarting = ko.observable(false);
-        self.useGlobalOptions = ko.observable(localStorage.getItem('useGlobalOptions') == 'false' ? false : true)      
-        self.refreshRate = ko.observable(localStorage.getItem('pageRefreshRate') ? localStorage.getItem('pageRefreshRate') : 1)
-        self.dateFormat = ko.observable(localStorage.getItem('pageDateFormat') ? localStorage.getItem('pageDateFormat') : 'dd-MM-yy')
-        self.extraColumn = ko.observable(localStorage.getItem('pageExtraColumn') ? localStorage.getItem('pageExtraColumn') : '')
+        self.useGlobalOptions = ko.observable(true).extend({ persist: 'useGlobalOptions' });
+        self.refreshRate = ko.observable(1).extend({ persist: 'pageRefreshRate' });
+        self.dateFormat = ko.observable('dd-MM-yy').extend({ persist: 'pageDateFormat' });
+        self.confirmDeleteQueue = ko.observable(true).extend({ persist: 'confirmDeleteQueue' });
+        self.confirmDeleteHistory = ko.observable(true).extend({ persist: 'confirmDeleteHistory' });
+        self.extraColumn = ko.observable('').extend({ persist: 'extraColumn' });
         self.hasStatusInfo = ko.observable(false); // True when we load it
         self.showActiveConnections = ko.observable(false);
         self.speed = ko.observable(0);
@@ -497,7 +499,7 @@ $(function() {
                         // Reformat CSS label and date
                         var warningData = {
                             index: index,
-                            type: warningSplit[1],
+                            type: glitterTranslate.status[warningSplit[1]].slice(0, -1),
                             text: warningSplit.slice(2).join('<br/>'), // Recombine if multiple lines
                             date: $.format.date(warningSplit[0], self.dateFormat() + ' HH:mm'),
                             css: (warningSplit[1] == "ERROR" ? "danger" : warningSplit[1] == "WARNING" ? "warning" : "info"),
@@ -512,10 +514,9 @@ $(function() {
 
         // Clear warnings through this weird URL..
         self.clearWarnings = function() {
-            if(!confirm(glitterTranslate.clearWarn))
-                return;
-            // Activate
-            callSpecialAPI("status/clearwarnings")
+            if(!self.confirmDeleteQueue() || confirm(glitterTranslate.clearWarn))
+                // Activate
+                callSpecialAPI("status/clearwarnings")
         }
         
         // Clear messages
@@ -558,8 +559,6 @@ $(function() {
         
         // Use global settings or device-specific?
         self.useGlobalOptions.subscribe(function(newValue) {
-            localStorage.setItem('useGlobalOptions', newValue)
-
             // Reload in case of enabling global options
             if(newValue) document.location = document.location;
         })
@@ -569,7 +568,6 @@ $(function() {
             // Set in javascript
             clearInterval(self.interval)
             self.interval = setInterval(self.refresh, parseInt(newValue) * 1000);
-            localStorage.setItem('pageRefreshRate', newValue);
             
             // Save in config if global-settings
             if(self.useGlobalOptions()) {
@@ -582,17 +580,7 @@ $(function() {
             }
             
         })
-
-        // Update dateformat
-        self.dateFormat.subscribe(function(newValue) {
-            localStorage.setItem('pageDateFormat', newValue)
-        })
         
-        // Update extraColumn
-        self.extraColumn.subscribe(function(newValue) {
-            localStorage.setItem('pageExtraColumn', newValue)
-        })
-
         /***
              Add NZB's
         ***/
@@ -685,15 +673,17 @@ $(function() {
                 self.hasStatusInfo(true)
 
                 // Add tooltips again
-                if(!isMobile) $('#modal_options [data-toggle="tooltip"]').tooltip()
+                if(!isMobile) $('#modal_options [data-toggle="tooltip"]').tooltip({ trigger: 'hover', container: 'body' })
             });
         }
 
         // Do a disk-speedtest
         self.testDiskSpeed = function() {
+            // Hide tooltips (otherwise they stay forever..)
+            $('#options_status [data-toggle="tooltip"]').tooltip('hide')
             // Hide before running the test
             self.hasStatusInfo(false)
-                // Run it and then display it
+            // Run it and then display it
             callSpecialAPI('status/dashrefresh').then(function() {
                 self.loadStatusInfo()
             })
@@ -710,6 +700,9 @@ $(function() {
 
         // Orphaned folder processing
         self.folderProcess = function(e, b) {
+            // Hide tooltips (otherwise they stay forever..)
+            $('#options_orphans [data-toggle="tooltip"]').tooltip('hide')
+            
             // Activate
             callSpecialAPI("status/" + $(b.currentTarget).data('action'), {
                 name: $(b.currentTarget).data('folder')
@@ -729,19 +722,18 @@ $(function() {
 
         // Orphaned folder deletion of all
         self.removeAllOrphaned = function() {
-            if(!confirm(glitterTranslate.clearWarn))
-                return;
-
-            // Do them all
-            ko.utils.arrayForEach(self.statusInfo.status.folders(), function(folder) {
-                callSpecialAPI("status/delete", {
-                    name: folder.folder()
-                })
-            });
-            // Refresh
-            self.loadStatusInfo()
-            // Remove message
-            self.clearMessages('lastOrphanedMsg')
+            if(!self.confirmDeleteHistory() || confirm(glitterTranslate.clearWarn)) {
+                // Do them all
+                ko.utils.arrayForEach(self.statusInfo.status.folders(), function(folder) {
+                    callSpecialAPI("status/delete", {
+                        name: folder.folder()
+                    })
+                });
+                // Refresh
+                self.loadStatusInfo()
+                // Remove message
+                self.clearMessages('lastOrphanedMsg')
+            }     
         }
 
         /**
@@ -831,10 +823,11 @@ $(function() {
                 
             // Show message (maybe it was there from before!)
             if(localStorage.getItem('lastOrphanedMsg') == 'true') {
+                console.log('asdas')
                 self.allMessages.push({
                     index: 'lastOrphanedMsg',
                     type: 'INFO',
-                    text: glitterTranslate.orphanedJobsMsg.replace('ICON_PLACEHOLDER', '<span class="glyphicon glyphicon-wrench"></span>'),
+                    text: glitterTranslate.orphanedJobsMsg + ' <a href="#" onclick="$(\'a[href=#modal_options]\').click().parent().click()"><span class="glyphicon glyphicon-wrench"></span></a>',
                     css: 'info',
                     clear: function() { self.clearMessages('lastOrphanedMsg')}
                 });
@@ -862,7 +855,7 @@ $(function() {
         self.refresh()
 
         // Activate tooltips
-        if(!isMobile) $('[data-toggle="tooltip"]').tooltip()
+        if(!isMobile) $('[data-toggle="tooltip"]').tooltip({ trigger: 'hover', container: 'body' })
     }
 
     /**
@@ -904,7 +897,7 @@ $(function() {
         self.categoriesList = ko.observableArray([]);
         self.scriptsList = ko.observableArray([]);
         self.searchTerm = ko.observable('').extend({ rateLimit: { timeout: 200, method: "notifyWhenChangesStop" } });
-        self.paginationLimit = ko.observable(localStorage.getItem('queuePaginationLimit') ? localStorage.getItem('queuePaginationLimit') : 20)
+        self.paginationLimit = ko.observable(20).extend({ persist: 'queuePaginationLimit' });
         self.pagination = new paginationModel(self);
 
         // Don't update while dragging
@@ -990,10 +983,7 @@ $(function() {
         };
 
         // Save pagination state
-        self.paginationLimit.subscribe(function(newValue) {
-            // Save in local storage
-            localStorage.setItem('queuePaginationLimit', newValue)
-            
+        self.paginationLimit.subscribe(function(newValue) {          
             // Save in config if global 
             if(self.parent.useGlobalOptions()) {
                 callAPI({
@@ -1017,6 +1007,10 @@ $(function() {
             // If the refresh-rate is high we do a forced refresh
             if(parseInt(self.parent.refreshRate()) >2 ) {
                 self.parent.refresh();
+            }
+            // Go back to page 1
+            if(self.pagination.currentPage() != 1) {
+                self.pagination.moveToPage(1);
             }
         })
         
@@ -1185,27 +1179,27 @@ $(function() {
 
         // Selete all selected
         self.doMultiDelete = function() {
-            if(!confirm(glitterTranslate.removeDown)) return;
-
-            // List all the ID's
-            strIDs = '';
-            $.each(self.multiEditItems, function(index) {
-                strIDs = strIDs + this.id + ',';
-            })
-
-            // Remove
-            callAPI({
-                mode: 'queue',
-                name: 'delete',
-                del_files: 1,
-                value: strIDs
-            }).then(function(response) {
-                if(response.status) {
-                    $('.delete input:checked').parents('tr').fadeOut(fadeOnDeleteDuration, function() {
-                        self.parent.refresh();
-                    })
-                }
-            })
+            if(!self.parent.confirmDeleteQueue() || confirm(glitterTranslate.removeDown)) {
+                // List all the ID's
+                strIDs = '';
+                $.each(self.multiEditItems, function(index) {
+                    strIDs = strIDs + this.id + ',';
+                })
+    
+                // Remove
+                callAPI({
+                    mode: 'queue',
+                    name: 'delete',
+                    del_files: 1,
+                    value: strIDs
+                }).then(function(response) {
+                    if(response.status) {
+                        $('.delete input:checked').parents('tr').fadeOut(fadeOnDeleteDuration, function() {
+                            self.parent.refresh();
+                        })
+                    }
+                })
+            }
         }
 
         // On change of page we need to check all those that were in the list!
@@ -1424,25 +1418,25 @@ $(function() {
             })
         }
 
-        // Remove
+        // Remove 1 download from queue
         self.removeDownload = function(data, event) {
-            if(!confirm(glitterTranslate.removeDow1)) return;
-            var itemToDelete = this;
-            callAPI({
-                mode: 'queue',
-                name: 'delete',
-                del_files: 1,
-                value: this.id
-            }).then(function(response) {
-                if(response.status) {
-                    // Fade and remove
-                    $(event.currentTarget).parent().parent().fadeOut(fadeOnDeleteDuration, function() {
-                        parent.queueItems.remove(itemToDelete);
-                        self.parent.parent.refresh();
-                    })
-
-                }
-            });
+            if(!self.parent.parent.confirmDeleteQueue() || confirm(glitterTranslate.removeDow1)) {
+                var itemToDelete = this;
+                callAPI({
+                    mode: 'queue',
+                    name: 'delete',
+                    del_files: 1,
+                    value: this.id
+                }).then(function(response) {
+                    if(response.status) {
+                        // Fade and remove
+                        $(event.currentTarget).parent().parent().fadeOut(fadeOnDeleteDuration, function() {
+                            parent.queueItems.remove(itemToDelete);
+                            self.parent.parent.refresh();
+                        })
+                    }
+                });
+            }
         };
 
         // Update
@@ -1460,7 +1454,7 @@ $(function() {
         self.historyItems = ko.observableArray([]);
         self.showFailed = ko.observable(false);
         self.searchTerm = ko.observable('').extend({ rateLimit: { timeout: 200, method: "notifyWhenChangesStop" } });
-        self.paginationLimit = ko.observable(localStorage.getItem('historyPaginationLimit') ? localStorage.getItem('historyPaginationLimit') : 10);
+        self.paginationLimit = ko.observable(10).extend({ persist: 'historyPaginationLimit' });
         self.totalItems = ko.observable(0);
         self.pagination = new paginationModel(self);
 
@@ -1518,10 +1512,7 @@ $(function() {
         };
 
         // Save pagination state
-        self.paginationLimit.subscribe(function(newValue) {
-            // Save in localstorage
-            localStorage.setItem('historyPaginationLimit', newValue)
-            
+        self.paginationLimit.subscribe(function(newValue) {         
             // Save in config if global config
             if(self.parent.useGlobalOptions()) {
                 callAPI({
@@ -1564,6 +1555,10 @@ $(function() {
             // If the refresh-rate is high we do a forced refresh
             if(parseInt(self.parent.refreshRate()) >2 ) {
                 self.parent.refresh();
+            }
+            // Go back to page 1
+            if(self.pagination.currentPage() != 1) {
+                self.pagination.moveToPage(1);
             }
         })
         
@@ -1728,23 +1723,22 @@ $(function() {
 
         // Delete button
         self.deleteSlot = function(item, event) {
-            if(!confirm(glitterTranslate.removeDow1))
-                return;
-
-            callAPI({
-                mode: 'history',
-                name: 'delete',
-                del_files: 1,
-                value: self.nzo_id
-            }).then(function(response) {
-                if(response.status) {
-                    // Fade and remove
-                    $(event.currentTarget).parent().parent().fadeOut(fadeOnDeleteDuration, function() {
-                        self.parent.historyItems.remove(self);
-                        self.parent.parent.refresh();
-                    })
-                }
-            });
+            if(!self.parent.parent.confirmDeleteHistory() || confirm(glitterTranslate.removeDow1)) {
+                callAPI({
+                    mode: 'history',
+                    name: 'delete',
+                    del_files: 1,
+                    value: self.nzo_id
+                }).then(function(response) {
+                    if(response.status) {
+                        // Fade and remove
+                        $(event.currentTarget).parent().parent().fadeOut(fadeOnDeleteDuration, function() {
+                            self.parent.historyItems.remove(self);
+                            self.parent.parent.refresh();
+                        })
+                    }
+                });
+            }
         };
 
         // User voting
@@ -2229,7 +2223,7 @@ function keepOpen(thisItem) {
         }
     });
     // Add possible tooltips
-    if(!isMobile) $(thisItem).siblings('.dropdown-menu').children('[data-toggle="tooltip"]').tooltip()
+    if(!isMobile) $(thisItem).siblings('.dropdown-menu').children('[data-toggle="tooltip"]').tooltip({ trigger: 'hover', container: 'body' })
 }
 
 // Check all functionality
