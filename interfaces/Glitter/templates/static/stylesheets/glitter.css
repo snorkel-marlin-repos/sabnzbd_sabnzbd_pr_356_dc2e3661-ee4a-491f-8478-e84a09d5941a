@@ -578,7 +578,7 @@ tr.queueitem>td:first-child>a {
     max-width: 700px;
     float: right;
     position: relative;
-    z-index: 999;
+    z-index: 900;
 }
 
 .multioperations-selector .add-nzb-inputbox {
@@ -1006,7 +1006,7 @@ tr.queueitem>td:first-child>a {
 
 #modal_options .tab-content {
     transition: all 0.3s !important;
-    min-height: 220px;
+    min-height: 200px;
 }
 
 #modal_options .form-group {
@@ -1022,6 +1022,12 @@ tr.queueitem>td:first-child>a {
     border-bottom: 1px solid #F0F0F0;
     padding-bottom: 3px;
     margin-bottom: 13px;
+}
+
+#modal_options .form-group+.options_switch {
+    margin-bottom: 13px;
+    margin-top: 8px;
+    clear: both;
 }
 
 #modal_options .options_switch label,
@@ -1150,6 +1156,13 @@ tr.queueitem>td:first-child>a {
 #modal_options .tab-content h4 {
     color: black;
     text-align: center;
+}
+
+#modal_options .form-checkbox input[type="checkbox"] {
+    height: 14px;
+    width: 14px;
+    display: block;
+    margin-top: 11px;
 }
 
 .dotOne, .dotTwo, .dotThree {
